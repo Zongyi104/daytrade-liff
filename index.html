@@ -131,7 +131,7 @@
     gap: 14px; padding: 32px; text-align: center; z-index: 30; }
   .screen[hidden] { display: none; }
   .screen .big { font-size: 20px; font-weight: 700; }
-  .screen .small { font-size: 14px; color: var(--sub); line-height: 1.6; }
+  .screen .small { font-size: 14px; color: var(--sub); line-height: 1.6; white-space: pre-line; max-width: 340px; }
   .screen .netbig { font-family: var(--mono); font-size: 40px; font-weight: 700; }
   .loader { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: s .8s linear infinite; }
   .ghost { border: 1px solid var(--line); background: transparent; border-radius: 12px; padding: 12px 20px; }
@@ -455,6 +455,17 @@
   $('deleteBtn').onclick = del;
 
   /* ---------- 啟動 ---------- */
+  function authMessage(res) {
+    if (res.error !== 'auth') return res.error || '載入失敗';
+    const m = {
+      no_token: '拿不到登入憑證。\n請到 LINE Developers → LINE Login channel → LIFF，確認 Scopes 有勾「openid」，存檔後完全關閉 LINE 再開一次。',
+      verify_failed: 'LINE 驗證失敗（代碼 A）。\n請確認指令碼屬性的 LINE_LOGIN_CHANNEL_ID 是「LINE Login channel」的 Channel ID，不是 Messaging API 的。',
+      not_owner: '登入的帳號和機器人擁有者對不上（代碼 B）。\n最常見原因：LINE Login 和 Messaging API 兩個 channel 不在同一個 Provider。',
+      no_owner: '後端還沒設定 OWNER_USER_ID。',
+    };
+    return (m[res.reason] || '身分驗證失敗') + (res.detail ? '\n\n（' + res.detail + '）' : '');
+  }
+
   async function boot() {
     try {
       if (!DEMO) {
@@ -462,9 +473,10 @@
         await liff.init({ liffId: CONFIG.LIFF_ID });
         if (!liff.isLoggedIn()) { liff.login({ redirectUri: location.href }); return; }
       }
+      if (!DEMO && !liff.getIDToken()) return fail(authMessage({ reason: 'no_token' }));
       const editId = new URLSearchParams(location.search).get('edit');
       const res = await api('init', { editId });
-      if (!res.ok) return fail(res.error === '身分驗證失敗' ? '這個表單只開放擁有者使用。' : (res.error || '載入失敗'));
+      if (!res.ok) return fail(authMessage(res));
       Object.assign(state.params, res.params || {});
       state.stocks = new Map(res.stocks || []);
       state.recent = res.recent || [];
