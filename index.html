@@ -11,7 +11,7 @@
 <script charset="utf-8" src="https://static.line-scdn.net/liff/edge/2/sdk.js"></script>
 <script>
   /* ====== 只需要改這兩行（都是公開資訊，不是金鑰）====== */
-  const CONFIG = {
+ const CONFIG = {
     LIFF_ID: '2012134847-sJRbydFv',
     API_URL: 'https://script.google.com/macros/s/AKfycbwyoC6JFv4dB-rtzI9RxJVNC0FuUlocApSeC3UTLMZt6uPRam0XyBfHasw4LhToWg3Klw/exec',
   };
@@ -102,6 +102,7 @@
   textarea { width: 100%; min-height: 76px; resize: vertical; background: var(--surface2); border: 1px solid var(--line); border-radius: 12px;
     padding: 12px 14px; font-size: 15px; outline: none; line-height: 1.5; }
 
+  .danger-link[hidden] { display: none; }
   .danger-link { display: block; margin: 8px auto 0; border: 0; background: transparent; color: var(--up); font-size: 14px; padding: 12px; }
 
   /* 底部預覽 */
@@ -135,6 +136,39 @@
   .screen .netbig { font-family: var(--mono); font-size: 40px; font-weight: 700; }
   .loader { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: s .8s linear infinite; }
   .ghost { border: 1px solid var(--line); background: transparent; border-radius: 12px; padding: 12px 20px; }
+
+  /* 模式切換 */
+  body.mode-calc .rec-only, body.mode-record .calc-only { display: none !important; }
+  .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface); border: 1px solid var(--line);
+    border-radius: 14px; padding: 4px; margin-bottom: 14px; }
+  .tabs[hidden] { display: none; }
+  .tabs button { border: 0; background: transparent; border-radius: 10px; padding: 10px 0; font-size: 15px; font-weight: 700; color: var(--faint); }
+  .tabs button.on { background: var(--gold-dim); color: var(--gold); }
+  .limits { margin-top: 10px; font-size: 12px; color: var(--faint); font-family: var(--mono); display: flex; gap: 14px; }
+  .limits b { font-weight: 500; }
+  .limits .u { color: var(--up); } .limits .d { color: var(--down); }
+
+  /* 試算結果 */
+  .be-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 12px; }
+  .be { font-family: var(--mono); font-size: 34px; font-weight: 700; color: var(--gold); line-height: 1.1; }
+  .be-ticks { font-size: 14px; color: var(--text); padding-bottom: 4px; text-align: right; }
+  .be-ticks small { display: block; font-size: 12px; color: var(--faint); font-family: var(--mono); }
+  .mm { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 14px; }
+  .mm > div { background: var(--surface2); border-radius: 12px; padding: 10px 12px; }
+  .mm .label { margin-bottom: 4px; }
+  .mm .v { font-family: var(--mono); font-size: 18px; font-weight: 700; }
+  .mm .at { font-family: var(--mono); font-size: 11px; color: var(--faint); }
+  .ladder { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 6px; }
+  .lrow { display: grid; grid-template-columns: 1fr 1fr 1fr; align-items: center; padding: 7px 10px; border-radius: 8px; font-family: var(--mono); font-size: 15px; }
+  .lrow .t { font-size: 12px; color: var(--faint); text-align: center; font-family: var(--sans); }
+  .lrow .n { text-align: right; font-weight: 700; }
+  .lrow.entry { background: var(--surface2); }
+  .lrow.entry .p { font-weight: 700; }
+  .lrow.be-hit { background: #2A2416; }
+  .lrow.be-hit .t { color: var(--gold); }
+  .lrow.beyond { opacity: .35; }
+  .up { color: var(--up); } .down { color: var(--down); }
+  .calc-warn { margin-top: 10px; font-size: 12px; color: var(--warn); }
 </style>
 </head>
 <body>
@@ -145,8 +179,13 @@
       <div class="eyebrow">當沖紀錄</div>
       <h1 id="title">記一筆</h1>
     </div>
-    <label class="date-pill"><span class="dot"></span><span id="dateText" class="num">—</span><input type="date" id="date"></label>
+    <label class="date-pill rec-only"><span class="dot"></span><span id="dateText" class="num">—</span><input type="date" id="date"></label>
   </header>
+
+  <div class="tabs" id="tabs">
+    <button type="button" data-m="calc">試算</button>
+    <button type="button" data-m="record">記錄</button>
+  </div>
 
   <section class="card">
     <div class="label">股票</div>
@@ -181,12 +220,28 @@
 
     <div class="prices">
       <div class="field"><label id="entryLabel">進場 · 買進</label><input id="entry" inputmode="decimal" placeholder="0.00"></div>
-      <div class="arrow">→</div>
-      <div class="field"><label id="exitLabel">出場 · 賣出</label><input id="exit" inputmode="decimal" placeholder="0.00"></div>
+      <div class="arrow rec-only">→</div>
+      <div class="field rec-only"><label id="exitLabel">出場 · 賣出</label><input id="exit" inputmode="decimal" placeholder="0.00"></div>
+      <div class="arrow calc-only"></div>
+      <div class="field calc-only"><label>昨收 · 自動帶入</label><input id="prev" inputmode="decimal" placeholder="—"></div>
     </div>
+    <div class="limits calc-only" id="limits"></div>
   </section>
 
-  <section class="card">
+  <section class="card calc-only" id="calcCard">
+    <div class="be-row">
+      <div><div class="label">損益兩平</div><div class="be" id="bePrice">—</div></div>
+      <div class="be-ticks" id="beTicks"></div>
+    </div>
+    <div class="mm">
+      <div><div class="label" id="gainLabel">最大獲利</div><div class="v" id="maxGain">—</div><div class="at" id="gainAt"></div></div>
+      <div><div class="label" id="lossLabel">最大虧損</div><div class="v" id="maxLoss">—</div><div class="at" id="lossAt"></div></div>
+    </div>
+    <div class="ladder" id="ladder"></div>
+    <div class="calc-warn" id="calcWarn"></div>
+  </section>
+
+  <section class="card rec-only">
     <div class="cost">
       <div class="field" id="feeField">
         <label>手續費（買＋賣）</label>
@@ -202,7 +257,7 @@
     <div class="note-hint" id="costHint">依參數自動帶入，可以直接改成對帳單上的數字。黃色代表和參考值不同。</div>
   </section>
 
-  <section class="card">
+  <section class="card rec-only">
     <div class="label">備註 · 進場原因</div>
     <textarea id="note" maxlength="500" placeholder="例如：突破前高、開盤爆量"></textarea>
   </section>
@@ -213,7 +268,7 @@
 <div class="dock">
   <div class="dock-inner">
     <div class="pv">
-      <div class="pv-label">淨損益</div>
+      <div class="pv-label" id="pvLabel">淨損益</div>
       <div class="pv-net zero" id="pvNet">—</div>
       <div class="pv-sub" id="pvSub">填入價格後即時計算</div>
     </div>
@@ -235,8 +290,8 @@
   const DEMO = new URLSearchParams(location.search).has('demo');
   const state = {
     params: { feeRate: 0.001425, feeDiscount: 1, minFee: 20, dayTradeTaxRate: 0.0015, normalTaxRate: 0.003, dayTradeTaxEnd: '2027-12-31' },
-    stocks: new Map(), recent: [], dir: '做多', unit: '張',
-    feeDirty: false, taxDirty: false, editId: null, busy: false,
+    stocks: new Map(), closes: new Map(), recent: [], dir: '做多', unit: '張',
+    feeDirty: false, taxDirty: false, prevDirty: false, editId: null, openId: null, busy: false, mode: 'record',
   };
 
   /* ---------- 計算（與後端相同） ---------- */
@@ -258,10 +313,97 @@
     const ef = brokerFee(ea, p), xf = brokerFee(xa, p);
     return { ef, xf, fee: ef + xf, tax: floor(sell * rate) };
   }
+  /* ---------- 試算（與後端 12_Ladder.gs 相同） ---------- */
+  function tickC(c) { return c < 1000 ? 1 : c < 5000 ? 5 : c < 10000 ? 10 : c < 50000 ? 50 : c < 100000 ? 100 : 500; }
+  function stepC(c, n) { let x = c; for (let i = 0; i < Math.abs(n); i++) x = n > 0 ? x + tickC(x) : x - tickC(x - 1); return x; }
+  const onTick = (c) => c > 0 && c % tickC(c) === 0;
+  function limUpC(prevC) { const r = prevC * 11, t = tickC(Math.floor(r / 10)); return Math.floor(r / (t * 10)) * t; }
+  function limDnC(prevC) { const r = prevC * 9, t = tickC(Math.ceil(r / 10)); return Math.ceil(r / (t * 10)) * t; }
+  function netFor(dir, sh, entry, exit, date, p) {
+    const ea = r2(entry * sh), xa = r2(exit * sh);
+    const rate = (!p.dayTradeTaxEnd || date <= p.dayTradeTaxEnd) ? p.dayTradeTaxRate : p.normalTaxRate;
+    const cost = brokerFee(ea, p) + brokerFee(xa, p) + floor((dir === '放空' ? ea : xa) * rate);
+    return { net: Math.round((dir === '放空' ? entry - exit : exit - entry) * sh) - cost, cost };
+  }
+  function calcScenario(x, p) {
+    const dir = x.dir === '放空' ? '放空' : '做多', fav = dir === '放空' ? -1 : 1;
+    const eC = Math.round(x.entry * 100), pC = x.prevClose > 0 ? Math.round(x.prevClose * 100) : 0;
+    const upC = pC ? limUpC(pC) : 0, dnC = pC ? limDnC(pC) : 0;
+    const inRange = (c) => c > 0 && (!pC || (c >= dnC && c <= upC));
+    const at = (c) => netFor(dir, x.shares, eC / 100, c / 100, x.date, p);
+    const warnings = [];
+    if (!onTick(eC)) warnings.push('價格不符合升降單位');
+    if (pC && (eC > upC || eC < dnC)) warnings.push('價格超出今日漲跌停範圍');
+    let breakeven = null;
+    for (let k = 0; k <= 300; k++) { const c = stepC(eC, fav * k); if (!inRange(c)) break; if (at(c).net >= 0) { breakeven = { price: c / 100, ticks: k }; break; } }
+    const ladder = [];
+    for (let k = 5; k >= -5; k--) {
+      const c = stepC(eC, k); if (c <= 0) continue;
+      ladder.push({ price: c / 100, ticks: k, net: at(c).net, beyond: !inRange(c), isEntry: k === 0, isBreakeven: !!breakeven && Math.round(breakeven.price * 100) === c });
+    }
+    const pt = (c) => (c ? { price: c / 100, net: at(c).net } : null);
+    return { dir, entry: eC / 100, prevClose: pC ? pC / 100 : null, limitUp: upC ? upC / 100 : null, limitDown: dnC ? dnC / 100 : null,
+      roundTripCost: at(eC).cost, breakeven, ladder, maxGain: pC ? pt(dir === '放空' ? dnC : upC) : null, maxLoss: pC ? pt(dir === '放空' ? upC : dnC) : null, warnings };
+  }
+  window.__calcScenario = calcScenario; // 測試用
+
   const fmt = (n) => Math.abs(n).toLocaleString('en-US');
   const signed = (n) => (n > 0 ? '+' : n < 0 ? '−' : '') + fmt(n);
 
   /* ---------- 畫面更新 ---------- */
+  const fp = (n) => String(Math.round(n * 100) / 100);
+  const cls = (n) => (n > 0 ? 'up' : n < 0 ? 'down' : '');
+
+  function updateCalc() {
+    const sh = shares(), en = num('entry'), prev = num('prev');
+    const code = $('code').value.trim().toUpperCase();
+    const short = state.dir === '放空';
+    $('gainLabel').textContent = '最大獲利 · ' + (short ? '跌停' : '漲停');
+    $('lossLabel').textContent = '最大虧損 · ' + (short ? '漲停' : '跌停');
+    const lim = prev > 0 ? [limUpC(Math.round(prev * 100)) / 100, limDnC(Math.round(prev * 100)) / 100] : null;
+    $('limits').innerHTML = lim ? '<span>漲停 <b class="u"></b></span><span>跌停 <b class="d"></b></span>' : '<span>沒有昨收，無法計算漲跌停</span>';
+    if (lim) { $('limits').querySelector('.u').textContent = fp(lim[0]); $('limits').querySelector('.d').textContent = fp(lim[1]); }
+    const pv = $('pvNet');
+    $('pvLabel').textContent = '損益兩平';
+    const blank = () => {
+      ['bePrice', 'maxGain', 'maxLoss'].forEach((id) => { $(id).textContent = '—'; $(id).className = id === 'bePrice' ? 'be' : 'v'; });
+      ['beTicks', 'gainAt', 'lossAt', 'calcWarn'].forEach((id) => ($(id).textContent = ''));
+      $('ladder').innerHTML = ''; pv.textContent = '—'; pv.className = 'pv-net zero'; $('pvSub').textContent = '輸入價格後即時計算';
+    };
+    if (/^00/.test(code)) { blank(); $('calcWarn').textContent = '試算目前不支援 ETF（升降單位與稅率不同）'; $('submit').disabled = true; return; }
+    if (!(sh > 0 && en > 0)) { blank(); $('submit').disabled = true; return; }
+
+    const r = calcScenario({ dir: state.dir, shares: sh, entry: en, prevClose: prev, date: $('date').value }, state.params);
+    if (r.breakeven) {
+      $('bePrice').textContent = fp(r.breakeven.price);
+      $('beTicks').innerHTML = '<span></span><small></small>';
+      $('beTicks').children[0].textContent = r.breakeven.ticks === 0 ? '原價即兩平' : (short ? '要跌 ' : '要漲 ') + r.breakeven.ticks + ' 檔';
+      $('beTicks').children[1].textContent = '來回成本 ' + fmt(r.roundTripCost);
+      pv.textContent = fp(r.breakeven.price); pv.className = 'pv-net'; pv.style.color = 'var(--gold)';
+      $('pvSub').textContent = (r.breakeven.ticks === 0 ? '原價即兩平' : (short ? '跌 ' : '漲 ') + r.breakeven.ticks + ' 檔') + ' · 成本 ' + fmt(r.roundTripCost);
+    } else {
+      $('bePrice').textContent = '無法兩平'; $('beTicks').textContent = '';
+      pv.textContent = '—'; pv.className = 'pv-net zero'; pv.style.color = ''; $('pvSub').textContent = '漲跌停範圍內無法兩平';
+    }
+    [['maxGain', 'gainAt', r.maxGain], ['maxLoss', 'lossAt', r.maxLoss]].forEach(([v, a, m]) => {
+      $(v).textContent = m ? signed(m.net) : '—'; $(v).className = 'v ' + (m ? cls(m.net) : '');
+      $(a).textContent = m ? '出場 ' + fp(m.price) : '需要昨收';
+    });
+    const box = $('ladder'); box.innerHTML = '';
+    r.ladder.forEach((row) => {
+      const d = document.createElement('div');
+      d.className = 'lrow' + (row.isEntry ? ' entry' : '') + (row.isBreakeven && !row.isEntry ? ' be-hit' : '') + (row.beyond ? ' beyond' : '');
+      d.innerHTML = '<span class="p"></span><span class="t"></span><span class="n"></span>';
+      d.children[0].textContent = fp(row.price);
+      d.children[1].textContent = row.beyond ? '超出漲跌停' : row.isEntry ? '進場' : (row.ticks > 0 ? '▲' : '▼') + Math.abs(row.ticks) + (row.isBreakeven ? ' 兩平' : '');
+      d.children[2].textContent = row.beyond ? '—' : signed(row.net);
+      if (!row.beyond) d.children[2].className = 'n ' + cls(row.net);
+      box.appendChild(d);
+    });
+    $('calcWarn').textContent = r.warnings.map((w) => '⚠ ' + w).join('　');
+    $('submit').disabled = false;
+  }
+
   function update() {
     const sh = shares();
     $('sharesNote').textContent = state.unit === '張' ? '= ' + fmt(sh) + ' 股' : '= ' + (sh / 1000).toFixed(3).replace(/\.?0+$/, '') + ' 張';
@@ -274,9 +416,10 @@
     const feeDiff = ref && Math.abs(fee - ref.fee) > 1, taxDiff = ref && Math.abs(tax - ref.tax) > 1;
     $('feeField').classList.toggle('warn', !!feeDiff); $('feeRef').classList.toggle('diff', !!feeDiff);
     $('taxField').classList.toggle('warn', !!taxDiff); $('taxRef').classList.toggle('diff', !!taxDiff);
+    if (state.mode === 'calc') return updateCalc();
 
     const en = num('entry'), ex = num('exit');
-    const pv = $('pvNet');
+    const pv = $('pvNet'); pv.style.color = ''; $('pvLabel').textContent = '淨損益';
     if (sh && en && ex) {
       const gross = Math.round((state.dir === '放空' ? en - ex : ex - en) * sh);
       const net = gross - fee - tax;
@@ -297,7 +440,7 @@
   function setDir(d) {
     state.dir = d;
     $('dir').classList.toggle('short', d === '放空');
-    $('entryLabel').textContent = d === '放空' ? '進場 · 先賣' : '進場 · 買進';
+    $('entryLabel').textContent = state.mode === 'calc' ? (d === '放空' ? '放空價' : '買進價') : (d === '放空' ? '進場 · 先賣' : '進場 · 買進');
     $('exitLabel').textContent = d === '放空' ? '出場 · 買回' : '出場 · 賣出';
     update();
   }
@@ -320,6 +463,20 @@
     const el = $('stockName');
     if (n) { el.textContent = n; el.className = 'stock-name'; }
     else { el.textContent = c ? (c.length >= 4 ? '查無此代碼' : '…') : '輸入代碼'; el.className = 'stock-name muted'; }
+    if (!state.prevDirty) $('prev').value = state.closes.get(c) || '';
+  }
+
+  function setMode(m) {
+    state.mode = m;
+    document.body.classList.toggle('mode-calc', m === 'calc');
+    document.body.classList.toggle('mode-record', m !== 'calc');
+    document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+    if (!state.editId && !state.openId) {
+      $('title').textContent = m === 'calc' ? '當沖試算' : '記一筆';
+      $('submit').textContent = m === 'calc' ? '已進場' : '記錄';
+    }
+    try { localStorage.setItem('mode', m); } catch (e) { /* ignore */ }
+    setDir(state.dir);
   }
   function suggest() {
     const q = $('code').value.trim().toUpperCase();
@@ -376,15 +533,18 @@
   }
   function demoApi(action) {
     if (action === 'init') {
-      return Promise.resolve({ ok: true, today: new Date().toISOString().slice(0, 10), params: state.params,
+      const demoOpen = new URLSearchParams(location.search).get('open');
+      return Promise.resolve({ ok: true,
+        openPos: demoOpen ? { id: demoOpen, date: new Date().toISOString().slice(0, 10), code: '2330', name: '台積電', dir: '放空', shares: 2000, entry: 1045, note: '' } : undefined, today: new Date().toISOString().slice(0, 10), params: state.params,
         recent: [{ code: '6517', name: '保勝光學' }, { code: '1802', name: '台玻' }, { code: '1301', name: '台塑' }],
-        stocks: [['1301', '台塑'], ['1802', '台玻'], ['2330', '台積電'], ['2317', '鴻海'], ['2603', '長榮'], ['6517', '保勝光學']] });
+        stocks: [['1301', '台塑', 82.3], ['1802', '台玻', 67.1], ['2330', '台積電', 1040], ['2317', '鴻海', 212.5], ['2603', '長榮', 196], ['6517', '保勝光學', 74]] });
     }
-    return new Promise((r) => setTimeout(() => r({ ok: true, id: 'T0004', net: 0 }), 500));
+    return new Promise((r) => setTimeout(() => r({ ok: true, id: action === 'enter' ? 'P0001' : 'T0004', net: 0 }), 500));
   }
 
   /* ---------- 送出 ---------- */
   async function submit() {
+    if (state.mode === 'calc') return enter();
     if (!valid() || state.busy) return;
     state.busy = true;
     const btn = $('submit'); const label = btn.textContent;
@@ -395,13 +555,41 @@
       fee: Math.round(num('fee')), tax: Math.round(num('tax')), note: $('note').value.trim(),
     };
     try {
-      const res = await api(state.editId ? 'update' : 'save', { trade, id: state.editId });
+      const res = await api(state.editId ? 'update' : 'save', { trade, id: state.editId, openId: state.openId });
       if (!res.ok) throw new Error(res.error || '儲存失敗');
       await finish((state.editId ? '✏️ 已更新 ' : '✅ 已記錄 ') + res.id, res, trade);
     } catch (e) {
       toast(e.message || '連線失敗，請再試一次', true);
       btn.textContent = label; state.busy = false; update();
     }
+  }
+
+  /* ---------- 先記進場 ---------- */
+  async function enter() {
+    const code = $('code').value.trim().toUpperCase();
+    if (!/^[0-9A-Z]{4,6}$/.test(code)) { toast('請先輸入股票代碼', true); $('code').focus(); return; }
+    if (!(shares() > 0 && num('entry') > 0) || state.busy) return;
+    state.busy = true;
+    const btn = $('submit'); const label = btn.textContent;
+    btn.innerHTML = '<span class="spin"></span>'; btn.disabled = true;
+    const pos = { date: $('date').value, code, dir: state.dir, shares: shares(), entry: num('entry') };
+    try {
+      const res = await api('enter', { pos });
+      if (!res.ok) throw new Error(res.error || '儲存失敗');
+      if (!DEMO && liff.isInClient()) {
+        try { await liff.sendMessages([{ type: 'text', text: '📌 已進場 ' + res.id }]); } catch (e) { /* ignore */ }
+        liff.closeWindow();
+        return;
+      }
+      $('doneLabel').textContent = '已進場 ' + res.id;
+      $('doneNet').textContent = pos.entry; $('doneNet').style.color = 'var(--gold)';
+      $('doneSub').textContent = code + ' ' + (state.stocks.get(code) || '') + ' · ' + pos.dir + ' · ' +
+        (pos.shares % 1000 === 0 ? pos.shares / 1000 + ' 張' : pos.shares + ' 股') + '\n出場後在 LINE 點「平倉」補出場價';
+      $('doneScreen').hidden = false;
+    } catch (e) {
+      toast(e.message || '連線失敗，請再試一次', true);
+    }
+    btn.textContent = label; state.busy = false; update();
   }
 
   async function finish(message, res, trade) {
@@ -431,11 +619,11 @@
   }
 
   window.resetForm = function () {
-    state.editId = null; state.feeDirty = false; state.taxDirty = false; state.busy = false;
+    state.editId = null; state.openId = null; state.feeDirty = false; state.taxDirty = false; state.busy = false;
     ['code', 'entry', 'exit', 'fee', 'tax', 'note'].forEach((id) => ($(id).value = ''));
-    $('qty').value = '1'; setUnit('張'); setDir('做多'); showName();
-    $('title').textContent = '記一筆'; $('submit').textContent = '記錄'; $('deleteBtn').hidden = true;
-    $('doneScreen').hidden = true; update();
+    $('qty').value = '1'; setUnit('張'); showName();
+    $('deleteBtn').hidden = true; $('tabs').hidden = false;
+    $('doneScreen').hidden = true; setMode('record');
   };
 
   /* ---------- 事件 ---------- */
@@ -446,6 +634,8 @@
   $('code').addEventListener('input', () => { $('code').value = $('code').value.toUpperCase().replace(/[^0-9A-Z一-鿿]/g, ''); showName(); suggest(); update(); });
   $('code').addEventListener('blur', () => setTimeout(() => $('suggest').classList.remove('on'), 150));
   ['qty', 'entry', 'exit', 'note'].forEach((id) => $(id).addEventListener('input', update));
+  $('prev').addEventListener('input', () => { state.prevDirty = $('prev').value !== ''; update(); });
+  document.querySelectorAll('#tabs button').forEach((b) => (b.onclick = () => setMode(b.dataset.m)));
   $('fee').addEventListener('input', () => { state.feeDirty = true; update(); });
   $('tax').addEventListener('input', () => { state.taxDirty = true; update(); });
   $('feeRef').onclick = () => { state.feeDirty = false; update(); };
@@ -460,7 +650,7 @@
     const m = {
       no_token: '拿不到登入憑證。\n請到 LINE Developers → LINE Login channel → LIFF，確認 Scopes 有勾「openid」，存檔後完全關閉 LINE 再開一次。',
       verify_failed: 'LINE 驗證失敗（代碼 A）。\n請確認指令碼屬性的 LINE_LOGIN_CHANNEL_ID 是「LINE Login channel」的 Channel ID，不是 Messaging API 的。',
-      not_owner: '登入的帳號和機器人擁有者對不上（代碼 B）。\n最常見原因：LINE Login 和 Messaging API 兩個 channel 不在同一個 Provider。',
+      not_owner: '這個 LINE 帳號還沒開通（代碼 B）。\n請在聊天室傳「我的ID」，把收到的文字交給管理員。\n\n如果你就是管理員：代表 LINE Login 和 Messaging API 兩個 channel 不在同一個 Provider。',
       no_owner: '後端還沒設定 OWNER_USER_ID。',
     };
     return (m[res.reason] || '身分驗證失敗') + (res.detail ? '\n\n（' + res.detail + '）' : '');
@@ -475,14 +665,27 @@
       }
       if (!DEMO && !liff.getIDToken()) return fail(authMessage({ reason: 'no_token' }));
       const editId = new URLSearchParams(location.search).get('edit');
-      const res = await api('init', { editId });
+      const openId = new URLSearchParams(location.search).get('open');
+      const res = await api('init', { editId, openId });
       if (!res.ok) return fail(authMessage(res));
       Object.assign(state.params, res.params || {});
-      state.stocks = new Map(res.stocks || []);
+      state.stocks = new Map((res.stocks || []).map((s) => [s[0], s[1]]));
+      state.closes = new Map((res.stocks || []).filter((s) => s[2] > 0).map((s) => [s[0], s[2]]));
       state.recent = res.recent || [];
       renderRecent();
       setDate(res.today || new Date().toISOString().slice(0, 10));
-      if (res.trade) {
+      if (res.openGone) toast('這筆持倉已經平倉或取消了', true);
+      if (res.openPos) {
+        const o = res.openPos;
+        state.openId = o.id;
+        $('title').innerHTML = '平倉<small></small>'; $('title').querySelector('small').textContent = o.id;
+        $('submit').textContent = '平倉記錄'; $('tabs').hidden = true;
+        setDate(o.date); $('code').value = o.code; showName();
+        if (o.shares % 1000 === 0) $('qty').value = String(o.shares / 1000);
+        else { state.unit = '股'; document.querySelectorAll('#unit button').forEach((b) => b.classList.toggle('on', b.dataset.u === '股')); $('qty').value = String(o.shares); }
+        $('entry').value = o.entry; $('note').value = o.note || '';
+        state.dir = o.dir; setMode('record');
+      } else if (res.trade) {
         const t = res.trade;
         state.editId = t.id; state.feeDirty = true; state.taxDirty = true;
         $('title').innerHTML = '修改紀錄<small></small>'; $('title').querySelector('small').textContent = t.id;
@@ -491,10 +694,25 @@
         if (t.shares % 1000 === 0) { $('qty').value = String(t.shares / 1000); }
         else { state.unit = '股'; document.querySelectorAll('#unit button').forEach((b) => b.classList.toggle('on', b.dataset.u === '股')); $('qty').value = String(t.shares); }
         $('entry').value = t.entry; $('exit').value = t.exit; $('fee').value = t.fee; $('tax').value = t.tax; $('note').value = t.note || '';
-        setDir(t.dir);
-      } else { setDir('做多'); }
+        $('tabs').hidden = true;
+        state.dir = t.dir; setMode('record');
+      } else {
+        const q = new URLSearchParams(location.search);
+        let mode = q.get('mode');
+        if (mode !== 'calc' && mode !== 'record') { try { mode = localStorage.getItem('mode'); } catch (e) { mode = null; } }
+        state.dir = q.get('dir') === '放空' ? '放空' : '做多';
+        const qs = Number(q.get('shares'));
+        const lots = qs > 0 ? qs : (mode === 'calc' ? Math.round((Number(state.params.defaultLots) || 1) * 1000) : 1000);
+        if (lots % 1000 === 0) $('qty').value = String(lots / 1000);
+        else { state.unit = '股'; document.querySelectorAll('#unit button').forEach((b) => b.classList.toggle('on', b.dataset.u === '股')); $('qty').value = String(lots); }
+        const qc = (q.get('code') || '').toUpperCase().replace(/[^0-9A-Z]/g, '').slice(0, 6);
+        if (qc) { $('code').value = qc; showName(); }
+        if (Number(q.get('entry')) > 0) $('entry').value = q.get('entry');
+        setMode(mode === 'calc' ? 'calc' : 'record');
+      }
       $('loading').hidden = true;
       update();
+      if (state.mode === 'record' && $('entry').value && !$('exit').value) $('exit').focus();
     } catch (e) {
       fail('連線失敗：' + (e.message || e));
     }
