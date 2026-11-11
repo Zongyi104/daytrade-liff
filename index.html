@@ -137,6 +137,20 @@
   .loader { width: 28px; height: 28px; border: 3px solid var(--line); border-top-color: var(--gold); border-radius: 50%; animation: s .8s linear infinite; }
   .ghost { border: 1px solid var(--line); background: transparent; border-radius: 12px; padding: 12px 20px; }
 
+  /* 完成畫面 */
+  .done-icon { width: 56px; height: 56px; border-radius: 50%; background: var(--gold-dim); color: var(--gold); font-size: 28px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; }
+  .done-label { font-size: 15px; font-weight: 700; color: var(--text); }
+  .done-week { width: 100%; max-width: 300px; background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 12px 14px; text-align: left; }
+  .done-week[hidden] { display: none; }
+  .done-week .row { display: flex; justify-content: space-between; font-size: 13px; color: var(--sub); }
+  .done-week .row b { font-family: var(--mono); font-size: 15px; }
+  .done-week .bar { height: 6px; background: var(--line); border-radius: 3px; margin-top: 8px; overflow: hidden; }
+  .done-week .bar i { display: block; height: 100%; background: var(--gold); border-radius: 3px; }
+  .done-note { font-size: 12px; color: var(--faint); min-height: 18px; white-space: pre-line; line-height: 1.6; }
+  .done-btns { display: flex; gap: 10px; }
+  .ghost.primary { background: var(--gold); color: #1A150B; border-color: var(--gold); font-weight: 700; }
+
   /* 模式切換 */
   body.mode-calc .rec-only, body.mode-record .calc-only { display: none !important; }
   .tabs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; background: var(--surface); border: 1px solid var(--line);
@@ -281,8 +295,18 @@
 <div class="screen" id="loading"><div class="loader"></div><div class="small">載入中…</div></div>
 <div class="screen" id="errorScreen" hidden><div class="big">無法開啟</div><div class="small" id="errorMsg"></div>
   <button type="button" class="ghost" onclick="location.reload()">重新整理</button></div>
-<div class="screen" id="doneScreen" hidden><div class="small" id="doneLabel">已記錄</div><div class="netbig" id="doneNet"></div>
-  <div class="small" id="doneSub"></div><button type="button" class="ghost" onclick="resetForm()">再記一筆</button></div>
+<div class="screen" id="doneScreen" hidden>
+  <div class="done-icon">✓</div>
+  <div class="done-label" id="doneLabel">已記錄</div>
+  <div class="netbig" id="doneNet"></div>
+  <div class="small" id="doneSub"></div>
+  <div class="done-week" id="doneWeek" hidden></div>
+  <div class="done-note" id="doneNote"></div>
+  <div class="done-btns">
+    <button type="button" class="ghost" onclick="resetForm()">再記一筆</button>
+    <button type="button" class="ghost primary" id="closeBtn">關閉</button>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -539,7 +563,8 @@
         recent: [{ code: '6517', name: '保勝光學' }, { code: '1802', name: '台玻' }, { code: '1301', name: '台塑' }],
         stocks: [['1301', '台塑', 82.3], ['1802', '台玻', 67.1], ['2330', '台積電', 1040], ['2317', '鴻海', 212.5], ['2603', '長榮', 196], ['6517', '保勝光學', 74]] });
     }
-    return new Promise((r) => setTimeout(() => r({ ok: true, id: action === 'enter' ? 'P0001' : 'T0004', net: 0 }), 500));
+    return new Promise((r) => setTimeout(() => r({ ok: true, id: action === 'enter' ? 'P0001' : 'T0004',
+      net: 923, week: { label: '第 46 週', net: 2630, target: 3000, count: 3 } }), 400));
   }
 
   /* ---------- 送出 ---------- */
@@ -576,37 +601,61 @@
     try {
       const res = await api('enter', { pos });
       if (!res.ok) throw new Error(res.error || '儲存失敗');
-      if (!DEMO && liff.isInClient()) {
-        try { await liff.sendMessages([{ type: 'text', text: '📌 已進場 ' + res.id }]); } catch (e) { /* ignore */ }
-        liff.closeWindow();
-        return;
-      }
-      $('doneLabel').textContent = '已進場 ' + res.id;
-      $('doneNet').textContent = pos.entry; $('doneNet').style.color = 'var(--gold)';
-      $('doneSub').textContent = code + ' ' + (state.stocks.get(code) || '') + ' · ' + pos.dir + ' · ' +
-        (pos.shares % 1000 === 0 ? pos.shares / 1000 + ' 張' : pos.shares + ' 股') + '\n出場後在 LINE 點「平倉」補出場價';
-      $('doneScreen').hidden = false;
+      showDone({
+        label: '已進場 ' + res.id, big: String(pos.entry), color: 'var(--gold)',
+        sub: code + ' ' + (state.stocks.get(code) || '') + ' · ' + pos.dir + ' · ' + (pos.shares % 1000 === 0 ? pos.shares / 1000 + ' 張' : pos.shares + ' 股'),
+      });
+      await deliver('📌 已進場 ' + res.id, 'pos', res.id, '出場後點卡片上的「平倉」，或傳「平倉 出場價」');
     } catch (e) {
       toast(e.message || '連線失敗，請再試一次', true);
     }
     btn.textContent = label; state.busy = false; update();
   }
 
-  async function finish(message, res, trade) {
-    if (!DEMO && liff.isInClient()) {
-      try { await liff.sendMessages([{ type: 'text', text: message }]); } catch (e) { /* 沒有聊天室權限時略過 */ }
-      liff.closeWindow();
-      return;
-    }
-    $('doneLabel').textContent = message.replace(/^\S+\s/, '');
-    if (trade) {
-      const gross = Math.round((trade.dir === '放空' ? trade.entry - trade.exit : trade.exit - trade.entry) * trade.shares);
-      const net = gross - trade.fee - trade.tax;
-      $('doneNet').textContent = signed(net);
-      $('doneNet').style.color = net > 0 ? 'var(--up)' : net < 0 ? 'var(--down)' : 'var(--faint)';
-      $('doneSub').textContent = trade.code + ' ' + trade.name + ' · ' + trade.dir;
-    } else { $('doneNet').textContent = ''; $('doneSub').textContent = ''; }
+  function showDone(o) {
+    $('doneLabel').textContent = o.label;
+    $('doneNet').textContent = o.big || ''; $('doneNet').style.color = o.color || 'var(--text)';
+    $('doneSub').textContent = o.sub || '';
+    const w = $('doneWeek');
+    if (o.week) {
+      const ratio = Math.max(0, Math.min(1, o.week.net / (o.week.target || 1)));
+      w.innerHTML = '<div class="row"><span></span><b></b></div><div class="bar"><i></i></div><div class="row" style="margin-top:6px"><span></span></div>';
+      w.querySelectorAll('span')[0].textContent = '本週 · ' + o.week.label + '（' + o.week.count + ' 筆）';
+      const b = w.querySelector('b'); b.textContent = signed(o.week.net); b.className = o.week.net > 0 ? 'up' : o.week.net < 0 ? 'down' : '';
+      w.querySelector('i').style.width = (ratio * 100) + '%';
+      w.querySelectorAll('span')[1].textContent = o.week.net >= o.week.target ? '已達成週目標 ' + fmt(o.week.target) + ' ✓' : '目標 ' + fmt(o.week.target) + ' · 還差 ' + fmt(o.week.target - o.week.net);
+      w.hidden = false;
+    } else w.hidden = true;
+    $('doneNote').textContent = '正在傳送卡片到聊天室…';
     $('doneScreen').hidden = false;
+  }
+
+  /** 先試著代你傳訊息（機器人用回覆送卡片，不花額度）；失敗就請機器人直接推播 */
+  async function deliver(text, kind, id, hint) {
+    const note = (t) => ($('doneNote').textContent = t);
+    if (DEMO) { note('（展示模式）' + (hint ? '\n' + hint : '')); return; }
+    let sent = false;
+    if (liff.isInClient()) {
+      try { await liff.sendMessages([{ type: 'text', text }]); sent = true; } catch (e) { console.warn('sendMessages 失敗', e); }
+    }
+    if (!sent && kind) {
+      try { const r = await api('notify', { kind, id }); sent = !!(r && r.ok); } catch (e) { console.warn('notify 失敗', e); }
+    }
+    note(sent ? '卡片已傳到聊天室' + (hint ? '\n' + hint : '') : '已存好，但卡片沒送出。回 LINE 傳「持倉」或「明細」可查看');
+    if (sent && liff.isInClient()) setTimeout(() => liff.closeWindow(), 2200);
+  }
+
+  async function finish(message, res, trade) {
+    const isDel = /已刪除/.test(message);
+    let big = '', color = '', sub = '';
+    if (trade) {
+      const net = res && typeof res.net === 'number' ? res.net
+        : Math.round((trade.dir === '放空' ? trade.entry - trade.exit : trade.exit - trade.entry) * trade.shares) - trade.fee - trade.tax;
+      big = signed(net); color = net > 0 ? 'var(--up)' : net < 0 ? 'var(--down)' : 'var(--faint)';
+      sub = trade.code + ' ' + trade.name + ' · ' + trade.dir + ' · ' + trade.entry + ' → ' + trade.exit;
+    }
+    showDone({ label: (state.openId ? '已平倉 · ' : '') + message.replace(/^\S+\s/, ''), big, color, sub, week: res && res.week });
+    await deliver(message, isDel ? null : 'trade', res && res.id);
   }
 
   async function del() {
@@ -642,6 +691,7 @@
   $('taxRef').onclick = () => { state.taxDirty = false; update(); };
   $('date').addEventListener('change', () => { setDate($('date').value); update(); });
   $('submit').onclick = submit;
+  $('closeBtn').onclick = () => { if (!DEMO && window.liff && liff.isInClient && liff.isInClient()) liff.closeWindow(); else $('doneScreen').hidden = true; };
   $('deleteBtn').onclick = del;
 
   /* ---------- 啟動 ---------- */
